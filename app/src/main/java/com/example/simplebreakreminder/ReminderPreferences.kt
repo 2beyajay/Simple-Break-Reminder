@@ -19,17 +19,19 @@ class ReminderPreferences(context: Context) {
     var isRunning: Boolean
         get() = preferences.getBoolean(KEY_RUNNING, false)
         set(value) {
-            preferences.edit()
-                .putBoolean(KEY_RUNNING, value)
-                .apply()
+            preferences.edit().putBoolean(KEY_RUNNING, value).apply()
         }
 
     var nextReminderAtMillis: Long
         get() = preferences.getLong(KEY_NEXT_REMINDER_AT, 0L)
         set(value) {
-            preferences.edit()
-                .putLong(KEY_NEXT_REMINDER_AT, value)
-                .apply()
+            preferences.edit().putLong(KEY_NEXT_REMINDER_AT, value).apply()
+        }
+
+    var isReminderPending: Boolean
+        get() = preferences.getBoolean(KEY_REMINDER_PENDING, false)
+        set(value) {
+            preferences.edit().putBoolean(KEY_REMINDER_PENDING, value).apply()
         }
 
     private companion object {
@@ -37,6 +39,7 @@ class ReminderPreferences(context: Context) {
         const val KEY_INTERVAL_MINUTES = "interval_minutes"
         const val KEY_RUNNING = "reminders_running"
         const val KEY_NEXT_REMINDER_AT = "next_reminder_at"
+        const val KEY_REMINDER_PENDING = "reminder_pending"
         const val DEFAULT_INTERVAL_MINUTES = 20
     }
 }

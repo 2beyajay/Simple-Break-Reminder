@@ -26,16 +26,20 @@ class ReminderService : Service() {
 
     private var intervalMinutes = DEFAULT_INTERVAL_MINUTES
     private var nextReminderAt = 0L
+    private var reminderPending = false
 
     private val updateRunnable = object : Runnable {
         override fun run() {
             if (nextReminderAt == 0L) return
 
             val now = System.currentTimeMillis()
-            if (now >= nextReminderAt) {
-                showReminderNotification()
-                nextReminderAt = now + intervalMinutes * MILLIS_PER_MINUTE
+
+            // When the timer expires, leave it pending until the user dismisses
+            // the reminder. Do not start another interval yet.
+            if (!reminderPending && now >= nextReminderAt) {
+                reminderPending = true
                 saveTimerState()
+                showReminderNotification()
             }
 
             updateOngoingNotification()
@@ -58,9 +62,8 @@ class ReminderService : Service() {
             }
 
             ACTION_SKIP -> {
-                if (nextReminderAt != 0L) {
-                    // Add an interval to the existing deadline, rather than
-                    // restarting the countdown from the moment Skip was tapped.
+                if (nextReminderAt != 0L && !reminderPending) {
+                    // Add an interval to the existing deadline.
                     nextReminderAt += intervalMinutes * MILLIS_PER_MINUTE
                     saveTimerState()
                     updateOngoingNotification()
@@ -69,7 +72,7 @@ class ReminderService : Service() {
             }
 
             ACTION_DISMISS -> {
-                notificationManager.cancel(REMINDER_NOTIFICATION_ID)
+                dismissReminderAndStartNextInterval()
                 return START_STICKY
             }
 
@@ -78,17 +81,19 @@ class ReminderService : Service() {
                     EXTRA_INTERVAL_MINUTES,
                     DEFAULT_INTERVAL_MINUTES
                 ).coerceIn(1, 240)
-
+                reminderPending = false
+                notificationManager.cancel(REMINDER_NOTIFICATION_ID)
                 nextReminderAt =
                     System.currentTimeMillis() + intervalMinutes * MILLIS_PER_MINUTE
                 saveTimerState()
             }
 
             else -> {
-                // Restore the timer if Android recreates this service.
+                // Restore saved timer state if Android recreates the service.
                 intervalMinutes = reminderPreferences.intervalMinutes
                     .coerceIn(1, 240)
                 nextReminderAt = reminderPreferences.nextReminderAtMillis
+                reminderPending = reminderPreferences.isReminderPending
 
                 if (nextReminderAt == 0L) {
                     stopSelf()
@@ -97,17 +102,27 @@ class ReminderService : Service() {
             }
         }
 
-        startAsForegroundService()
+        startForeground(
+            ONGOING_NOTIFICATION_ID,
+            buildOngoingNotification()
+        )
         handler.removeCallbacks(updateRunnable)
         handler.post(updateRunnable)
         return START_STICKY
     }
 
-    private fun startAsForegroundService() {
-        startForeground(
-            ONGOING_NOTIFICATION_ID,
-            buildOngoingNotification()
-        )
+    private fun dismissReminderAndStartNextInterval() {
+        if (!reminderPending) return
+
+        reminderPending = false
+        notificationManager.cancel(REMINDER_NOTIFICATION_ID)
+
+        // Start a fresh interval only now, after the reminder is dismissed.
+        nextReminderAt =
+            System.currentTimeMillis() + intervalMinutes * MILLIS_PER_MINUTE
+
+        saveTimerState()
+        updateOngoingNotification()
     }
 
     private fun createNotificationChannels() {
@@ -145,10 +160,19 @@ class ReminderService : Service() {
     }
 
     private fun buildOngoingNotification(): Notification {
+        val contentIntent = openMainScreenPendingIntent(REQUEST_OPEN_MAIN)
+
+        val statusText = if (reminderPending) {
+            "Reminder waiting to be dismissed"
+        } else {
+            countdownText()
+        }
+
         return NotificationCompat.Builder(this, STATUS_CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
             .setContentTitle("Break reminders are on")
-            .setContentText(countdownText())
+            .setContentText(statusText)
+            .setContentIntent(contentIntent)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .addAction(
@@ -175,7 +199,8 @@ class ReminderService : Service() {
         val notification = NotificationCompat.Builder(this, REMINDER_CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
             .setContentTitle("Time for a break")
-            .setContentText("Take a short break, then get back to it.")
+            .setContentText("Dismiss this reminder when you're ready to continue.")
+            .setContentIntent(openMainScreenPendingIntent(REQUEST_OPEN_REMINDER))
             .setAutoCancel(false)
             .setOnlyAlertOnce(true)
             .addAction(
@@ -191,7 +216,7 @@ class ReminderService : Service() {
     private fun countdownText(): String {
         val remainingSeconds = (
                 (nextReminderAt - System.currentTimeMillis()).coerceAtLeast(0L) + 999L
-                ) / 1000L
+                ) / 1_000L
         val minutes = remainingSeconds / 60
         val seconds = remainingSeconds % 60
         return "Next break in %02d:%02d".format(minutes, seconds)
@@ -207,15 +232,29 @@ class ReminderService : Service() {
         )
     }
 
+    private fun openMainScreenPendingIntent(requestCode: Int): PendingIntent {
+        val intent = Intent(this, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+        }
+        return PendingIntent.getActivity(
+            this,
+            requestCode,
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+    }
+
     private fun saveTimerState() {
         reminderPreferences.intervalMinutes = intervalMinutes
         reminderPreferences.nextReminderAtMillis = nextReminderAt
+        reminderPreferences.isReminderPending = reminderPending
         reminderPreferences.isRunning = true
     }
 
     private fun stopReminderService() {
         handler.removeCallbacks(updateRunnable)
         reminderPreferences.nextReminderAtMillis = 0L
+        reminderPreferences.isReminderPending = false
         reminderPreferences.isRunning = false
         notificationManager.cancel(ONGOING_NOTIFICATION_ID)
         notificationManager.cancel(REMINDER_NOTIFICATION_ID)
@@ -247,5 +286,7 @@ class ReminderService : Service() {
         private const val REQUEST_SKIP = 2001
         private const val REQUEST_STOP = 2002
         private const val REQUEST_DISMISS = 2003
+        private const val REQUEST_OPEN_MAIN = 2004
+        private const val REQUEST_OPEN_REMINDER = 2005
     }
 }
