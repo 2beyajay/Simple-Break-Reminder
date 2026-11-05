@@ -1,4 +1,4 @@
-package com.example.simplebreakreminder.ui.theme
+package com.ajaydubey.simplebreakreminder.ui.theme
 
 import androidx.compose.ui.graphics.Color
 

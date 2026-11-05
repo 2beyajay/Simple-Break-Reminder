@@ -1,4 +1,4 @@
-package com.example.simplebreakreminder
+package com.ajaydubey.simplebreakreminder
 
 import org.junit.Test
 

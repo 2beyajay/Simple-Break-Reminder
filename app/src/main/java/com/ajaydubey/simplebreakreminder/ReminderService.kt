@@ -1,4 +1,4 @@
-package com.example.simplebreakreminder
+package com.ajaydubey.simplebreakreminder
 
 import android.app.Notification
 import android.app.NotificationChannel
@@ -441,10 +441,10 @@ class ReminderService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     companion object {
-        const val ACTION_START = "com.example.simplebreakreminder.START"
-        const val ACTION_SKIP = "com.example.simplebreakreminder.SKIP"
-        const val ACTION_STOP = "com.example.simplebreakreminder.STOP"
-        const val ACTION_DISMISS = "com.example.simplebreakreminder.DISMISS"
+        const val ACTION_START = "com.ajaydubey.simplebreakreminder.START"
+        const val ACTION_SKIP = "com.ajaydubey.simplebreakreminder.SKIP"
+        const val ACTION_STOP = "com.ajaydubey.simplebreakreminder.STOP"
+        const val ACTION_DISMISS = "com.ajaydubey.simplebreakreminder.DISMISS"
         const val EXTRA_INTERVAL_MINUTES = "interval_minutes"
 
         private const val DEFAULT_INTERVAL_MINUTES = 20

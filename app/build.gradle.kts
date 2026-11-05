@@ -4,13 +4,13 @@ plugins {
 }
 
 android {
-    namespace = "com.example.simplebreakreminder"
+    namespace = "com.ajaydubey.simplebreakreminder"
     compileSdk {
         version = release(37)
     }
 
     defaultConfig {
-        applicationId = "com.example.simplebreakreminder"
+        applicationId = "com.ajaydubey.simplebreakreminder"
         minSdk = 26
         targetSdk = 37
         versionCode = 1

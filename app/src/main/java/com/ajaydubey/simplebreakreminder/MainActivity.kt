@@ -1,4 +1,4 @@
-package com.example.simplebreakreminder
+package com.ajaydubey.simplebreakreminder
 
 import android.Manifest
 import android.content.Intent
@@ -51,7 +51,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
-import com.example.simplebreakreminder.ui.theme.SimpleBreakReminderTheme
+import com.ajaydubey.simplebreakreminder.ui.theme.SimpleBreakReminderTheme
 import kotlinx.coroutines.delay
 import kotlin.math.cos
 import kotlin.math.sin
