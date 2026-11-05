@@ -31,6 +31,8 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import com.example.simplebreakreminder.ui.theme.SimpleBreakReminderTheme
 import kotlinx.coroutines.delay
+import androidx.compose.runtime.mutableLongStateOf
+import kotlin.time.Duration.Companion.seconds
 
 class MainActivity : ComponentActivity() {
 
@@ -56,31 +58,35 @@ class MainActivity : ComponentActivity() {
                 var isRunning by remember {
                     mutableStateOf(reminderPreferences.isRunning)
                 }
+                var isReminderPending by remember {
+                    mutableStateOf(reminderPreferences.isReminderPending)
+                }
                 var nextReminderAt by remember {
-                    mutableStateOf(reminderPreferences.nextReminderAtMillis)
+                    mutableLongStateOf(reminderPreferences.nextReminderAtMillis)
                 }
                 var currentTime by remember {
-                    mutableStateOf(System.currentTimeMillis())
+                    mutableLongStateOf(System.currentTimeMillis())
                 }
 
-                // Read the service's saved state regularly. This keeps the
-                // screen in sync with Stop or Skip tapped in a notification.
+                // Keep the screen in sync with service actions taken from a notification.
                 LaunchedEffect(Unit) {
                     while (true) {
                         isRunning = reminderPreferences.isRunning
+                        isReminderPending = reminderPreferences.isReminderPending
                         nextReminderAt = reminderPreferences.nextReminderAtMillis
                         currentTime = System.currentTimeMillis()
-                        delay(1_000L)
+                        delay(1.seconds)
                     }
                 }
 
                 val interval = intervalText.toIntOrNull()
                 val isIntervalValid = interval != null && interval in 1..240
-                val remainingSeconds = if (isRunning && nextReminderAt > 0L) {
-                    ((nextReminderAt - currentTime).coerceAtLeast(0L) + 999L) / 1_000L
-                } else {
-                    0L
-                }
+                val remainingSeconds =
+                    if (isRunning && !isReminderPending && nextReminderAt > 0L) {
+                        ((nextReminderAt - currentTime).coerceAtLeast(0L) + 999L) / 1_000L
+                    } else {
+                        0L
+                    }
                 val remainingMinutes = remainingSeconds / 60
                 val remainingSecondsPart = remainingSeconds % 60
 
@@ -103,6 +109,7 @@ class MainActivity : ComponentActivity() {
                             onValueChange = { newValue ->
                                 if (newValue.all { it.isDigit() }) {
                                     intervalText = newValue
+
                                     newValue.toIntOrNull()
                                         ?.takeIf { it in 1..240 }
                                         ?.let { reminderPreferences.intervalMinutes = it }
@@ -126,7 +133,20 @@ class MainActivity : ComponentActivity() {
                             enabled = !isRunning
                         )
 
-                        if (isRunning) {
+                        if (isRunning && isReminderPending) {
+                            Text(
+                                text = "Time for a break",
+                                style = MaterialTheme.typography.headlineSmall
+                            )
+
+                            Button(
+                                onClick = {
+                                    sendServiceAction(ReminderService.ACTION_DISMISS)
+                                }
+                            ) {
+                                Text("Dismiss reminder")
+                            }
+                        } else if (isRunning) {
                             Text(
                                 text = "Next reminder in %02d:%02d".format(
                                     remainingMinutes,
@@ -137,12 +157,7 @@ class MainActivity : ComponentActivity() {
 
                             Button(
                                 onClick = {
-                                    startService(
-                                        Intent(
-                                            this@MainActivity,
-                                            ReminderService::class.java
-                                        ).setAction(ReminderService.ACTION_SKIP)
-                                    )
+                                    sendServiceAction(ReminderService.ACTION_SKIP)
                                 }
                             ) {
                                 Text("Skip next reminder")
@@ -152,13 +167,8 @@ class MainActivity : ComponentActivity() {
                         Button(
                             onClick = {
                                 if (isRunning) {
-                                    startService(
-                                        Intent(
-                                            this@MainActivity,
-                                            ReminderService::class.java
-                                        ).setAction(ReminderService.ACTION_STOP)
-                                    )
-                                } else if (isIntervalValid && interval != null) {
+                                    sendServiceAction(ReminderService.ACTION_STOP)
+                                } else if (interval != null && interval in 1..240) {
                                     if (
                                         Build.VERSION.SDK_INT >= 33 &&
                                         ContextCompat.checkSelfPermission(
@@ -177,7 +187,10 @@ class MainActivity : ComponentActivity() {
                             },
                             enabled = isRunning || isIntervalValid
                         ) {
-                            Text(if (isRunning) "Stop reminders" else "Start reminders")
+                            Text(
+                                if (isRunning) "Stop reminders"
+                                else "Start reminders"
+                            )
                         }
 
                         Text(
@@ -192,6 +205,12 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    private fun sendServiceAction(action: String) {
+        val intent = Intent(this, ReminderService::class.java)
+            .setAction(action)
+        startService(intent)
     }
 
     private fun startReminderService(intervalMinutes: Int) {
