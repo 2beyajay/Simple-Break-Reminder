@@ -360,7 +360,7 @@ class ReminderService : Service() {
         )
             .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
             .setContentTitle("Time for a break")
-            .setContentText("Dismiss this reminder within one minute.")
+            .setContentText("Dismiss this reminder within 30 seconds.")
             .setContentIntent(openMainScreenPendingIntent(REQUEST_OPEN_REMINDER))
             .setAutoCancel(false)
             .setOnlyAlertOnce(true)
@@ -450,7 +450,7 @@ class ReminderService : Service() {
         private const val DEFAULT_INTERVAL_MINUTES = 20
         private const val MILLIS_PER_MINUTE = 60_000L
         private const val UPDATE_INTERVAL_MILLIS = 1_000L
-        private const val REMINDER_TIMEOUT_MILLIS = 60_000L
+        private const val REMINDER_TIMEOUT_MILLIS = 30_000L
         private const val MAX_CONSECUTIVE_MISSES = 2
         private const val VIBRATION_CYCLE_COUNT = 60
         private const val VIBRATION_ON_MILLIS = 700L
