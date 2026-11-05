@@ -1,8 +1,13 @@
 package com.example.simplebreakreminder
 
+import android.Manifest
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -21,9 +26,20 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import com.example.simplebreakreminder.ui.theme.SimpleBreakReminderTheme
 
 class MainActivity : ComponentActivity() {
+
+    private var intervalToStartAfterPermission = 20
+
+    private val notificationPermissionLauncher =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+            if (granted) {
+                startReminderService(intervalToStartAfterPermission)
+            }
+        }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -34,7 +50,17 @@ class MainActivity : ComponentActivity() {
                 var intervalText by rememberSaveable {
                     mutableStateOf(reminderPreferences.intervalMinutes.toString())
                 }
-                var isRunning by rememberSaveable { mutableStateOf(false) }
+                var isRunning by rememberSaveable {
+                    mutableStateOf(
+                        getSharedPreferences(
+                            "break_reminder_preferences",
+                            MODE_PRIVATE
+                        ).getBoolean("reminders_running", false)
+                    )
+                }
+                var notificationPermissionMissing by rememberSaveable {
+                    mutableStateOf(false)
+                }
 
                 val interval = intervalText.toIntOrNull()
                 val isIntervalValid = interval != null && interval in 1..240
@@ -58,7 +84,6 @@ class MainActivity : ComponentActivity() {
                             onValueChange = { newValue ->
                                 if (newValue.all { it.isDigit() }) {
                                     intervalText = newValue
-
                                     newValue.toIntOrNull()
                                         ?.takeIf { it in 1..240 }
                                         ?.let { reminderPreferences.intervalMinutes = it }
@@ -83,13 +108,35 @@ class MainActivity : ComponentActivity() {
                         )
 
                         Button(
-                            onClick = { isRunning = !isRunning },
+                            onClick = {
+                                if (isRunning) {
+                                    startService(
+                                        Intent(this@MainActivity, ReminderService::class.java)
+                                            .setAction(ReminderService.ACTION_STOP)
+                                    )
+                                    isRunning = false
+                                } else if (isIntervalValid && interval != null) {
+                                    notificationPermissionMissing = false
+                                    if (
+                                        Build.VERSION.SDK_INT >= 33 &&
+                                        ContextCompat.checkSelfPermission(
+                                            this@MainActivity,
+                                            Manifest.permission.POST_NOTIFICATIONS
+                                        ) != PackageManager.PERMISSION_GRANTED
+                                    ) {
+                                        intervalToStartAfterPermission = interval
+                                        notificationPermissionLauncher.launch(
+                                            Manifest.permission.POST_NOTIFICATIONS
+                                        )
+                                    } else {
+                                        startReminderService(interval)
+                                        isRunning = true
+                                    }
+                                }
+                            },
                             enabled = isRunning || isIntervalValid
                         ) {
-                            Text(
-                                if (isRunning) "Stop reminders"
-                                else "Start reminders"
-                            )
+                            Text(if (isRunning) "Stop reminders" else "Start reminders")
                         }
 
                         Text(
@@ -100,9 +147,24 @@ class MainActivity : ComponentActivity() {
                             },
                             style = MaterialTheme.typography.bodyLarge
                         )
+
+                        if (notificationPermissionMissing) {
+                            Text(
+                                "Allow notifications to start reminders.",
+                                color = MaterialTheme.colorScheme.error
+                            )
+                        }
                     }
                 }
             }
         }
+    }
+
+    private fun startReminderService(intervalMinutes: Int) {
+        val intent = Intent(this, ReminderService::class.java)
+            .setAction(ReminderService.ACTION_START)
+            .putExtra(ReminderService.EXTRA_INTERVAL_MINUTES, intervalMinutes)
+
+        ContextCompat.startForegroundService(this, intent)
     }
 }
