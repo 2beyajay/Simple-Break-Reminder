@@ -1,24 +1,77 @@
-<?xml version="1.0" encoding="utf-8"?>
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <path
-        android:fillColor="#00000000"
-        android:pathData="M54,27
-            A27,27 0,1 1 54,81
-            A27,27 0,1 1 54,27Z"
-        android:strokeColor="#FFFFFFFF"
-        android:strokeWidth="3" />
-    <path
-        android:fillColor="#00000000"
-        android:pathData="M54,39 L54,54 L66,61"
-        android:strokeColor="#FFFFFFFF"
-        android:strokeWidth="3"
-        android:strokeLineCap="round"
-        android:strokeLineJoin="round" />
-    <path
-        android:fillColor="#FFFFFFFF"
-        android:pathData="M56.5,54 A2.5,2.5 0,1 1 51.5,54 A2.5,2.5 0,1 1 56.5,54Z" />
+
+    <group
+        android:pivotX="54"
+        android:pivotY="54"
+        android:scaleX="0.82"
+        android:scaleY="0.82">
+
+        <!-- Detailed eye -->
+        <path
+            android:fillColor="#00000000"
+            android:pathData="M19,43 C28,29 40,22 54,22 C68,22 80,29 89,43 C80,57 68,64 54,64 C40,64 28,57 19,43 Z"
+            android:strokeColor="#FFFFFFFF"
+            android:strokeWidth="2"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round" />
+
+        <path
+            android:fillColor="#00000000"
+            android:pathData="M28,43 C36,34 45,30 54,30 C63,30 72,34 80,43 M28,43 C36,52 45,56 54,56 C63,56 72,52 80,43"
+            android:strokeColor="#FFFFFFFF"
+            android:strokeWidth="1.8"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round" />
+
+        <!-- Fine upper lashes -->
+        <path
+            android:fillColor="#00000000"
+            android:pathData="M34,32 L31,27 M43,26 L41,21 M54,24 L54,18 M65,26 L67,21 M74,32 L77,27"
+            android:strokeColor="#FFFFFFFF"
+            android:strokeWidth="1.6"
+            android:strokeLineCap="round" />
+
+        <!-- Inner eye accent -->
+        <path
+            android:fillColor="#00000000"
+            android:pathData="M54,47 C58,47 61,44 61,40 C61,37 58,34 54,34"
+            android:strokeColor="#FFFFFFFF"
+            android:strokeWidth="1.8"
+            android:strokeLineCap="round" />
+
+        <!-- Left cupped hand and wrist -->
+        <path
+            android:fillColor="#00000000"
+            android:pathData="M28,88 C28,82 26,78 22,73 L14,59 C12,56 13,53 16,54 C18,54 19,57 21,60 L30,70 C32,68 35,69 37,72 L43,78 C46,81 46,85 46,89"
+            android:strokeColor="#FFFFFFFF"
+            android:strokeWidth="1.8"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round" />
+        <path
+            android:fillColor="#00000000"
+            android:pathData="M30,71 C29,73 30,75 32,77 L38,82"
+            android:strokeColor="#FFFFFFFF"
+            android:strokeWidth="1.6"
+            android:strokeLineCap="round" />
+
+        <!-- Right cupped hand and wrist -->
+        <path
+            android:fillColor="#00000000"
+            android:pathData="M80,88 C80,82 82,78 86,73 L94,59 C96,56 95,53 92,54 C90,54 89,57 87,60 L78,70 C76,68 73,69 71,72 L65,78 C62,81 62,85 62,89"
+            android:strokeColor="#FFFFFFFF"
+            android:strokeWidth="1.8"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round" />
+        <path
+            android:fillColor="#00000000"
+            android:pathData="M78,71 C79,73 78,75 76,77 L70,82"
+            android:strokeColor="#FFFFFFFF"
+            android:strokeWidth="1.6"
+            android:strokeLineCap="round" />
+
+    </group>
 </vector>
