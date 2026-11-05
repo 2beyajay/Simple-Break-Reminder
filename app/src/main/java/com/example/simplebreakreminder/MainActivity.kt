@@ -6,22 +6,25 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
@@ -31,11 +34,18 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import com.example.simplebreakreminder.ui.theme.SimpleBreakReminderTheme
 import kotlinx.coroutines.delay
+import kotlin.math.cos
+import kotlin.math.sin
 import kotlin.time.Duration.Companion.seconds
 
 class MainActivity : ComponentActivity() {
@@ -79,7 +89,10 @@ class MainActivity : ComponentActivity() {
                     mutableStateOf(reminderPreferences.vibrationEnabled)
                 }
 
-                // Keep the screen in sync with actions from the notification.
+                BackHandler(enabled = showSettings) {
+                    showSettings = false
+                }
+
                 LaunchedEffect(Unit) {
                     while (true) {
                         isRunning = reminderPreferences.isRunning
@@ -112,8 +125,13 @@ class MainActivity : ComponentActivity() {
                                 .padding(24.dp),
                             verticalArrangement = Arrangement.spacedBy(20.dp)
                         ) {
-                            TextButton(onClick = { showSettings = false }) {
-                                Text("Back")
+                            IconButton(
+                                onClick = { showSettings = false },
+                                modifier = Modifier.semantics {
+                                    contentDescription = "Back"
+                                }
+                            ) {
+                                BackChevron()
                             }
 
                             Text(
@@ -133,6 +151,7 @@ class MainActivity : ComponentActivity() {
                                         style = MaterialTheme.typography.bodyMedium
                                     )
                                 }
+
                                 Switch(
                                     checked = soundEnabled,
                                     onCheckedChange = { enabled ->
@@ -148,6 +167,7 @@ class MainActivity : ComponentActivity() {
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text("Vibration")
+
                                 Switch(
                                     checked = vibrationEnabled,
                                     onCheckedChange = { enabled ->
@@ -166,13 +186,23 @@ class MainActivity : ComponentActivity() {
                             verticalArrangement = Arrangement.spacedBy(16.dp),
                             horizontalAlignment = Alignment.CenterHorizontally
                         ) {
-                            Text(
-                                text = "Break Reminder",
-                                style = MaterialTheme.typography.headlineMedium
-                            )
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                IconButton(
+                                    onClick = { showSettings = true },
+                                    modifier = Modifier.semantics {
+                                        contentDescription = "Settings"
+                                    }
+                                ) {
+                                    GearIcon()
+                                }
 
-                            TextButton(onClick = { showSettings = true }) {
-                                Text("Settings")
+                                Text(
+                                    text = "Break Reminder",
+                                    style = MaterialTheme.typography.headlineMedium
+                                )
                             }
 
                             OutlinedTextField(
@@ -291,5 +321,86 @@ class MainActivity : ComponentActivity() {
             .putExtra(ReminderService.EXTRA_INTERVAL_MINUTES, intervalMinutes)
 
         ContextCompat.startForegroundService(this, intent)
+    }
+}
+
+@androidx.compose.runtime.Composable
+private fun BackChevron() {
+    val iconColor = MaterialTheme.colorScheme.onSurface
+
+    Canvas(
+        modifier = Modifier
+            .size(24.dp)
+            .semantics { contentDescription = "Back" }
+    ) {
+        val strokeWidth = 2.2.dp.toPx()
+        val top = Offset(size.width * 0.65f, size.height * 0.18f)
+        val middle = Offset(size.width * 0.30f, size.height * 0.50f)
+        val bottom = Offset(size.width * 0.65f, size.height * 0.82f)
+
+        drawLine(
+            color = iconColor,
+            start = top,
+            end = middle,
+            strokeWidth = strokeWidth,
+            cap = StrokeCap.Round
+        )
+        drawLine(
+            color = iconColor,
+            start = middle,
+            end = bottom,
+            strokeWidth = strokeWidth,
+            cap = StrokeCap.Round
+        )
+    }
+}
+
+@androidx.compose.runtime.Composable
+private fun GearIcon() {
+    val iconColor = MaterialTheme.colorScheme.onSurface
+
+    Canvas(
+        modifier = Modifier
+            .size(24.dp)
+            .semantics { contentDescription = "Settings" }
+    ) {
+        val center = Offset(size.width / 2f, size.height / 2f)
+        val strokeWidth = 2.dp.toPx()
+        val innerRadius = size.minDimension * 0.18f
+        val ringRadius = size.minDimension * 0.31f
+        val spokeStart = size.minDimension * 0.38f
+        val spokeEnd = size.minDimension * 0.48f
+
+        drawCircle(
+            color = iconColor,
+            radius = ringRadius,
+            center = center,
+            style = Stroke(width = strokeWidth)
+        )
+        drawCircle(
+            color = iconColor,
+            radius = innerRadius,
+            center = center,
+            style = Stroke(width = strokeWidth)
+        )
+
+        for (index in 0 until 8) {
+            val angle = index * Math.PI / 4.0
+            val start = Offset(
+                x = center.x + cos(angle).toFloat() * spokeStart,
+                y = center.y + sin(angle).toFloat() * spokeStart
+            )
+            val end = Offset(
+                x = center.x + cos(angle).toFloat() * spokeEnd,
+                y = center.y + sin(angle).toFloat() * spokeEnd
+            )
+            drawLine(
+                color = iconColor,
+                start = start,
+                end = end,
+                strokeWidth = strokeWidth,
+                cap = StrokeCap.Round
+            )
+        }
     }
 }
