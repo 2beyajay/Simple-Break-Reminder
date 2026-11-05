@@ -56,6 +56,9 @@ import kotlinx.coroutines.delay
 import kotlin.math.cos
 import kotlin.math.sin
 import kotlin.time.Duration.Companion.seconds
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.text.style.TextAlign
 
 class MainActivity : ComponentActivity() {
 
@@ -152,6 +155,13 @@ class MainActivity : ComponentActivity() {
                                     )
                                     startActivity(repoIntent)
                                 },
+                                onOpenEyeHealth = {
+                                    val eyeHealthIntent = Intent(
+                                        Intent.ACTION_VIEW,
+                                        EYE_HEALTH_URL.toUri()
+                                    )
+                                    startActivity(eyeHealthIntent)
+                                },
                                 modifier = Modifier.padding(innerPadding)
                             )
                         }
@@ -226,6 +236,8 @@ class MainActivity : ComponentActivity() {
     private companion object {
         const val REPOSITORY_URL =
             "https://github.com/2beyajay/Simple-Break-Reminder"
+        const val EYE_HEALTH_URL =
+            "https://opto.ca/eye-health-library/20-20-20-rule"
     }
 }
 
@@ -274,7 +286,8 @@ private fun MainPage(
                 style = MaterialTheme.typography.titleLarge,
                 modifier = Modifier
                     .weight(1f)
-                    .padding(horizontal = 10.dp)
+                    .padding(horizontal = 10.dp),
+                textAlign = TextAlign.Center
             )
 
             HeaderDivider()
@@ -417,12 +430,14 @@ private fun SettingsPage(
 @Composable
 private fun AboutPage(
     onBack: () -> Unit,
+    onOpenEyeHealth: () -> Unit,
     onOpenRepository: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Column(
         modifier = modifier
             .fillMaxSize()
+            .verticalScroll(rememberScrollState())
             .padding(24.dp),
         verticalArrangement = Arrangement.spacedBy(20.dp)
     ) {
@@ -448,7 +463,15 @@ private fun AboutPage(
             style = MaterialTheme.typography.bodyLarge
         )
 
-        Spacer(modifier = Modifier.height(4.dp))
+        Text(
+            text = "We recommend a 20-minute break interval. For eye comfort, " +
+                    "consider following the 20-20-20 rule.",
+            style = MaterialTheme.typography.bodyLarge
+        )
+
+        TextButton(onClick = onOpenEyeHealth) {
+            Text("Learn about the 20-20-20 rule")
+        }
 
         Text(
             text = "Features",
@@ -482,12 +505,12 @@ private fun AboutPage(
 
 @Composable
 private fun HeaderDivider() {
-    val dividerColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f)
+    val dividerColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.7f)
 
     Box(
         modifier = Modifier
             .padding(vertical = 12.dp)
-            .width(1.dp)
+            .width(1.5.dp)
             .height(24.dp)
     ) {
         Canvas(modifier = Modifier.fillMaxSize()) {
