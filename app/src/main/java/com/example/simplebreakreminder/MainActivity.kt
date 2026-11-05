@@ -18,8 +18,10 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -28,6 +30,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import com.example.simplebreakreminder.ui.theme.SimpleBreakReminderTheme
+import kotlinx.coroutines.delay
 
 class MainActivity : ComponentActivity() {
 
@@ -50,20 +53,36 @@ class MainActivity : ComponentActivity() {
                 var intervalText by rememberSaveable {
                     mutableStateOf(reminderPreferences.intervalMinutes.toString())
                 }
-                var isRunning by rememberSaveable {
-                    mutableStateOf(
-                        getSharedPreferences(
-                            "break_reminder_preferences",
-                            MODE_PRIVATE
-                        ).getBoolean("reminders_running", false)
-                    )
+                var isRunning by remember {
+                    mutableStateOf(reminderPreferences.isRunning)
                 }
-                var notificationPermissionMissing by rememberSaveable {
-                    mutableStateOf(false)
+                var nextReminderAt by remember {
+                    mutableStateOf(reminderPreferences.nextReminderAtMillis)
+                }
+                var currentTime by remember {
+                    mutableStateOf(System.currentTimeMillis())
+                }
+
+                // Read the service's saved state regularly. This keeps the
+                // screen in sync with Stop or Skip tapped in a notification.
+                LaunchedEffect(Unit) {
+                    while (true) {
+                        isRunning = reminderPreferences.isRunning
+                        nextReminderAt = reminderPreferences.nextReminderAtMillis
+                        currentTime = System.currentTimeMillis()
+                        delay(1_000L)
+                    }
                 }
 
                 val interval = intervalText.toIntOrNull()
                 val isIntervalValid = interval != null && interval in 1..240
+                val remainingSeconds = if (isRunning && nextReminderAt > 0L) {
+                    ((nextReminderAt - currentTime).coerceAtLeast(0L) + 999L) / 1_000L
+                } else {
+                    0L
+                }
+                val remainingMinutes = remainingSeconds / 60
+                val remainingSecondsPart = remainingSeconds % 60
 
                 Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
                     Column(
@@ -107,16 +126,39 @@ class MainActivity : ComponentActivity() {
                             enabled = !isRunning
                         )
 
+                        if (isRunning) {
+                            Text(
+                                text = "Next reminder in %02d:%02d".format(
+                                    remainingMinutes,
+                                    remainingSecondsPart
+                                ),
+                                style = MaterialTheme.typography.headlineSmall
+                            )
+
+                            Button(
+                                onClick = {
+                                    startService(
+                                        Intent(
+                                            this@MainActivity,
+                                            ReminderService::class.java
+                                        ).setAction(ReminderService.ACTION_SKIP)
+                                    )
+                                }
+                            ) {
+                                Text("Skip next reminder")
+                            }
+                        }
+
                         Button(
                             onClick = {
                                 if (isRunning) {
                                     startService(
-                                        Intent(this@MainActivity, ReminderService::class.java)
-                                            .setAction(ReminderService.ACTION_STOP)
+                                        Intent(
+                                            this@MainActivity,
+                                            ReminderService::class.java
+                                        ).setAction(ReminderService.ACTION_STOP)
                                     )
-                                    isRunning = false
                                 } else if (isIntervalValid && interval != null) {
-                                    notificationPermissionMissing = false
                                     if (
                                         Build.VERSION.SDK_INT >= 33 &&
                                         ContextCompat.checkSelfPermission(
@@ -130,7 +172,6 @@ class MainActivity : ComponentActivity() {
                                         )
                                     } else {
                                         startReminderService(interval)
-                                        isRunning = true
                                     }
                                 }
                             },
@@ -147,13 +188,6 @@ class MainActivity : ComponentActivity() {
                             },
                             style = MaterialTheme.typography.bodyLarge
                         )
-
-                        if (notificationPermissionMissing) {
-                            Text(
-                                "Allow notifications to start reminders.",
-                                color = MaterialTheme.colorScheme.error
-                            )
-                        }
                     }
                 }
             }

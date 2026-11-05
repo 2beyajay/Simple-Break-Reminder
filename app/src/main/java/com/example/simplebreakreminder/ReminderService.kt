@@ -20,8 +20,8 @@ class ReminderService : Service() {
     private val handler = Handler(Looper.getMainLooper())
     private lateinit var notificationManager: NotificationManager
 
-    private val preferences by lazy {
-        getSharedPreferences(PREFERENCES_FILE, Context.MODE_PRIVATE)
+    private val reminderPreferences by lazy {
+        ReminderPreferences(this)
     }
 
     private var intervalMinutes = DEFAULT_INTERVAL_MINUTES
@@ -59,19 +59,25 @@ class ReminderService : Service() {
 
             ACTION_SKIP -> {
                 if (nextReminderAt != 0L) {
-                    nextReminderAt =
-                        System.currentTimeMillis() + intervalMinutes * MILLIS_PER_MINUTE
+                    // Add an interval to the existing deadline, rather than
+                    // restarting the countdown from the moment Skip was tapped.
+                    nextReminderAt += intervalMinutes * MILLIS_PER_MINUTE
                     saveTimerState()
                     updateOngoingNotification()
                 }
                 return START_STICKY
             }
 
+            ACTION_DISMISS -> {
+                notificationManager.cancel(REMINDER_NOTIFICATION_ID)
+                return START_STICKY
+            }
+
             ACTION_START -> {
-                intervalMinutes = (intent.getIntExtra(
+                intervalMinutes = intent.getIntExtra(
                     EXTRA_INTERVAL_MINUTES,
                     DEFAULT_INTERVAL_MINUTES
-                )).coerceIn(1, 240)
+                ).coerceIn(1, 240)
 
                 nextReminderAt =
                     System.currentTimeMillis() + intervalMinutes * MILLIS_PER_MINUTE
@@ -80,11 +86,9 @@ class ReminderService : Service() {
 
             else -> {
                 // Restore the timer if Android recreates this service.
-                intervalMinutes = preferences.getInt(
-                    KEY_INTERVAL_MINUTES,
-                    DEFAULT_INTERVAL_MINUTES
-                ).coerceIn(1, 240)
-                nextReminderAt = preferences.getLong(KEY_NEXT_REMINDER_AT, 0L)
+                intervalMinutes = reminderPreferences.intervalMinutes
+                    .coerceIn(1, 240)
+                nextReminderAt = reminderPreferences.nextReminderAtMillis
 
                 if (nextReminderAt == 0L) {
                     stopSelf()
@@ -172,8 +176,13 @@ class ReminderService : Service() {
             .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
             .setContentTitle("Time for a break")
             .setContentText("Take a short break, then get back to it.")
-            .setAutoCancel(true)
+            .setAutoCancel(false)
             .setOnlyAlertOnce(true)
+            .addAction(
+                android.R.drawable.ic_menu_close_clear_cancel,
+                "Dismiss",
+                servicePendingIntent(ACTION_DISMISS, REQUEST_DISMISS)
+            )
             .build()
 
         notificationManager.notify(REMINDER_NOTIFICATION_ID, notification)
@@ -199,20 +208,17 @@ class ReminderService : Service() {
     }
 
     private fun saveTimerState() {
-        preferences.edit()
-            .putInt(KEY_INTERVAL_MINUTES, intervalMinutes)
-            .putLong(KEY_NEXT_REMINDER_AT, nextReminderAt)
-            .putBoolean(KEY_RUNNING, true)
-            .apply()
+        reminderPreferences.intervalMinutes = intervalMinutes
+        reminderPreferences.nextReminderAtMillis = nextReminderAt
+        reminderPreferences.isRunning = true
     }
 
     private fun stopReminderService() {
         handler.removeCallbacks(updateRunnable)
-        preferences.edit()
-            .putLong(KEY_NEXT_REMINDER_AT, 0L)
-            .putBoolean(KEY_RUNNING, false)
-            .apply()
+        reminderPreferences.nextReminderAtMillis = 0L
+        reminderPreferences.isRunning = false
         notificationManager.cancel(ONGOING_NOTIFICATION_ID)
+        notificationManager.cancel(REMINDER_NOTIFICATION_ID)
         stopSelf()
     }
 
@@ -227,12 +233,8 @@ class ReminderService : Service() {
         const val ACTION_START = "com.example.simplebreakreminder.START"
         const val ACTION_SKIP = "com.example.simplebreakreminder.SKIP"
         const val ACTION_STOP = "com.example.simplebreakreminder.STOP"
+        const val ACTION_DISMISS = "com.example.simplebreakreminder.DISMISS"
         const val EXTRA_INTERVAL_MINUTES = "interval_minutes"
-
-        private const val PREFERENCES_FILE = "break_reminder_preferences"
-        private const val KEY_INTERVAL_MINUTES = "interval_minutes"
-        private const val KEY_NEXT_REMINDER_AT = "next_reminder_at"
-        private const val KEY_RUNNING = "reminders_running"
 
         private const val DEFAULT_INTERVAL_MINUTES = 20
         private const val MILLIS_PER_MINUTE = 60_000L
@@ -244,5 +246,6 @@ class ReminderService : Service() {
         private const val REMINDER_NOTIFICATION_ID = 1002
         private const val REQUEST_SKIP = 2001
         private const val REQUEST_STOP = 2002
+        private const val REQUEST_DISMISS = 2003
     }
 }
