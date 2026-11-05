@@ -27,9 +27,13 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
+        val reminderPreferences = ReminderPreferences(this)
+
         setContent {
             SimpleBreakReminderTheme {
-                var intervalText by rememberSaveable { mutableStateOf("20") }
+                var intervalText by rememberSaveable {
+                    mutableStateOf(reminderPreferences.intervalMinutes.toString())
+                }
                 var isRunning by rememberSaveable { mutableStateOf(false) }
 
                 val interval = intervalText.toIntOrNull()
@@ -54,6 +58,10 @@ class MainActivity : ComponentActivity() {
                             onValueChange = { newValue ->
                                 if (newValue.all { it.isDigit() }) {
                                     intervalText = newValue
+
+                                    newValue.toIntOrNull()
+                                        ?.takeIf { it in 1..240 }
+                                        ?.let { reminderPreferences.intervalMinutes = it }
                                 }
                             },
                             label = { Text("Interval in minutes") },
