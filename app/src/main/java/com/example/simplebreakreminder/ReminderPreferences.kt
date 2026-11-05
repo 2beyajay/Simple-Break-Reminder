@@ -46,6 +46,20 @@ class ReminderPreferences(context: Context) {
             preferences.edit().putBoolean(KEY_VIBRATION_ENABLED, value).apply()
         }
 
+    var reminderAutoDismissAtMillis: Long
+        get() = preferences.getLong(KEY_AUTO_DISMISS_AT, 0L)
+        set(value) {
+            preferences.edit().putLong(KEY_AUTO_DISMISS_AT, value).apply()
+        }
+
+    var consecutiveMissedReminders: Int
+        get() = preferences.getInt(KEY_CONSECUTIVE_MISSES, 0)
+        set(value) {
+            preferences.edit()
+                .putInt(KEY_CONSECUTIVE_MISSES, value.coerceAtLeast(0))
+                .apply()
+        }
+
     private companion object {
         const val PREFERENCES_FILE = "break_reminder_preferences"
         const val KEY_INTERVAL_MINUTES = "interval_minutes"
@@ -54,6 +68,8 @@ class ReminderPreferences(context: Context) {
         const val KEY_REMINDER_PENDING = "reminder_pending"
         const val KEY_SOUND_ENABLED = "sound_enabled"
         const val KEY_VIBRATION_ENABLED = "vibration_enabled"
+        const val KEY_AUTO_DISMISS_AT = "reminder_auto_dismiss_at"
+        const val KEY_CONSECUTIVE_MISSES = "consecutive_missed_reminders"
         const val DEFAULT_INTERVAL_MINUTES = 20
     }
 }

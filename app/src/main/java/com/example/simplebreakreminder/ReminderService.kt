@@ -9,11 +9,12 @@ import android.content.Context
 import android.content.Intent
 import android.media.AudioAttributes
 import android.media.RingtoneManager
-import android.net.Uri
 import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
+import android.os.VibrationEffect
+import android.os.Vibrator
 import androidx.core.app.NotificationCompat
 
 class ReminderService : Service() {
@@ -25,25 +26,49 @@ class ReminderService : Service() {
         ReminderPreferences(this)
     }
 
+    private val vibrator by lazy {
+        getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
+    }
+
     private var intervalMinutes = DEFAULT_INTERVAL_MINUTES
     private var nextReminderAt = 0L
     private var reminderPending = false
+    private var reminderAutoDismissAt = 0L
+    private var consecutiveMisses = 0
 
     private val updateRunnable = object : Runnable {
         override fun run() {
-            if (nextReminderAt == 0L) return
+            if (!reminderPreferences.isRunning) return
 
             val now = System.currentTimeMillis()
 
-            // Keep the reminder pending until the user dismisses it.
-            if (!reminderPending && now >= nextReminderAt) {
-                reminderPending = true
-                saveTimerState()
-                showReminderNotification()
+            if (reminderPending && now >= reminderAutoDismissAt) {
+                handleAutomaticDismissal()
+                if (!reminderPreferences.isRunning) return
+            } else if (!reminderPending && now >= nextReminderAt) {
+                beginReminder()
             }
 
             updateOngoingNotification()
             handler.postDelayed(this, UPDATE_INTERVAL_MILLIS)
+        }
+    }
+
+    private val autoDismissRunnable: Runnable = object : Runnable {
+        override fun run() {
+            if (!reminderPending) return
+
+            val remainingMillis =
+                reminderAutoDismissAt - System.currentTimeMillis()
+
+            if (remainingMillis <= 0L) {
+                handleAutomaticDismissal()
+                if (reminderPreferences.isRunning) {
+                    updateOngoingNotification()
+                }
+            } else {
+                handler.postDelayed(this, remainingMillis)
+            }
         }
     }
 
@@ -63,7 +88,7 @@ class ReminderService : Service() {
 
             ACTION_SKIP -> {
                 if (nextReminderAt != 0L && !reminderPending) {
-                    // Add an interval to the existing deadline.
+                    // Add an interval to the existing deadline, not the current time.
                     nextReminderAt += intervalMinutes * MILLIS_PER_MINUTE
                     saveTimerState()
                     updateOngoingNotification()
@@ -72,7 +97,7 @@ class ReminderService : Service() {
             }
 
             ACTION_DISMISS -> {
-                dismissReminderAndStartNextInterval()
+                dismissReminderByUser()
                 return START_STICKY
             }
 
@@ -81,8 +106,13 @@ class ReminderService : Service() {
                     EXTRA_INTERVAL_MINUTES,
                     DEFAULT_INTERVAL_MINUTES
                 ).coerceIn(1, 240)
+                consecutiveMisses = 0
                 reminderPending = false
+                reminderAutoDismissAt = 0L
+                handler.removeCallbacks(autoDismissRunnable)
+                stopReminderVibration()
                 notificationManager.cancel(REMINDER_NOTIFICATION_ID)
+
                 nextReminderAt =
                     System.currentTimeMillis() + intervalMinutes * MILLIS_PER_MINUTE
                 saveTimerState()
@@ -94,10 +124,19 @@ class ReminderService : Service() {
                     .coerceIn(1, 240)
                 nextReminderAt = reminderPreferences.nextReminderAtMillis
                 reminderPending = reminderPreferences.isReminderPending
+                reminderAutoDismissAt =
+                    reminderPreferences.reminderAutoDismissAtMillis
+                consecutiveMisses =
+                    reminderPreferences.consecutiveMissedReminders
 
-                if (nextReminderAt == 0L) {
+                if (!reminderPreferences.isRunning || nextReminderAt == 0L) {
                     stopSelf()
                     return START_NOT_STICKY
+                }
+
+                if (reminderPending && reminderAutoDismissAt > System.currentTimeMillis()) {
+                    startReminderVibration()
+                    scheduleAutoDismiss()
                 }
             }
         }
@@ -111,16 +150,89 @@ class ReminderService : Service() {
         return START_STICKY
     }
 
-    private fun dismissReminderAndStartNextInterval() {
+    private fun beginReminder() {
+        reminderPending = true
+        reminderAutoDismissAt =
+            System.currentTimeMillis() + REMINDER_TIMEOUT_MILLIS
+
+        saveTimerState()
+        showReminderNotification()
+        startReminderVibration()
+        scheduleAutoDismiss()
+    }
+
+    private fun scheduleAutoDismiss() {
+        handler.removeCallbacks(autoDismissRunnable)
+        val delayMillis =
+            (reminderAutoDismissAt - System.currentTimeMillis()).coerceAtLeast(0L)
+        handler.postDelayed(autoDismissRunnable, delayMillis)
+    }
+
+    private fun dismissReminderByUser() {
         if (!reminderPending) return
 
+        consecutiveMisses = 0
         reminderPending = false
+        reminderAutoDismissAt = 0L
+        handler.removeCallbacks(autoDismissRunnable)
+        stopReminderVibration()
         notificationManager.cancel(REMINDER_NOTIFICATION_ID)
+
         nextReminderAt =
             System.currentTimeMillis() + intervalMinutes * MILLIS_PER_MINUTE
 
         saveTimerState()
         updateOngoingNotification()
+    }
+
+    private fun handleAutomaticDismissal() {
+        if (!reminderPending) return
+
+        reminderPending = false
+        reminderAutoDismissAt = 0L
+        handler.removeCallbacks(autoDismissRunnable)
+        stopReminderVibration()
+        notificationManager.cancel(REMINDER_NOTIFICATION_ID)
+
+        consecutiveMisses += 1
+
+        if (consecutiveMisses >= MAX_CONSECUTIVE_MISSES) {
+            stopReminderService()
+            return
+        }
+
+        // One missed reminder is tolerated: start the next interval.
+        nextReminderAt =
+            System.currentTimeMillis() + intervalMinutes * MILLIS_PER_MINUTE
+
+        saveTimerState()
+    }
+
+    private fun startReminderVibration() {
+        if (!reminderPreferences.vibrationEnabled || !vibrator.hasVibrator()) return
+
+        // 60 one-second cycles: 700 ms on and 300 ms off.
+        // This finite waveform stops after a minute even if the service is delayed.
+        val timings = LongArray(VIBRATION_CYCLE_COUNT * 2 + 1) { index ->
+            when {
+                index == 0 -> 0L
+                index % 2 == 1 -> VIBRATION_ON_MILLIS
+                else -> VIBRATION_OFF_MILLIS
+            }
+        }
+        val amplitudes = IntArray(timings.size) { index ->
+            if (index % 2 == 1) VibrationEffect.DEFAULT_AMPLITUDE else 0
+        }
+
+        vibrator.vibrate(
+            VibrationEffect.createWaveform(timings, amplitudes, -1)
+        )
+    }
+
+    private fun stopReminderVibration() {
+        if (::notificationManager.isInitialized && vibrator.hasVibrator()) {
+            vibrator.cancel()
+        }
     }
 
     private fun createNotificationChannels() {
@@ -138,36 +250,31 @@ class ReminderService : Service() {
         notificationManager.createNotificationChannel(statusChannel)
 
         createReminderChannel(
-            channelId = reminderChannelId(sound = true, vibration = true),
-            channelName = "Break reminders: sound and vibration",
-            soundEnabled = true,
-            vibrationEnabled = true
+            REMINDER_CHANNEL_SOUND_VIBRATION,
+            "Break reminders: sound and vibration",
+            soundEnabled = true
         )
         createReminderChannel(
-            channelId = reminderChannelId(sound = true, vibration = false),
-            channelName = "Break reminders: sound only",
-            soundEnabled = true,
-            vibrationEnabled = false
+            REMINDER_CHANNEL_SOUND_ONLY,
+            "Break reminders: sound only",
+            soundEnabled = true
         )
         createReminderChannel(
-            channelId = reminderChannelId(sound = false, vibration = true),
-            channelName = "Break reminders: vibration only",
-            soundEnabled = false,
-            vibrationEnabled = true
+            REMINDER_CHANNEL_VIBRATION_ONLY,
+            "Break reminders: vibration only",
+            soundEnabled = false
         )
         createReminderChannel(
-            channelId = reminderChannelId(sound = false, vibration = false),
-            channelName = "Break reminders: silent",
-            soundEnabled = false,
-            vibrationEnabled = false
+            REMINDER_CHANNEL_SILENT,
+            "Break reminders: silent",
+            soundEnabled = false
         )
     }
 
     private fun createReminderChannel(
         channelId: String,
         channelName: String,
-        soundEnabled: Boolean,
-        vibrationEnabled: Boolean
+        soundEnabled: Boolean
     ) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
 
@@ -181,7 +288,7 @@ class ReminderService : Service() {
             NotificationManager.IMPORTANCE_HIGH
         ).apply {
             description = "Alerts when it is time to take a break"
-            enableVibration(vibrationEnabled)
+            enableVibration(false)
 
             if (soundEnabled) {
                 setSound(
@@ -196,11 +303,18 @@ class ReminderService : Service() {
         notificationManager.createNotificationChannel(channel)
     }
 
-    private fun reminderChannelId(sound: Boolean, vibration: Boolean): String {
+    private fun selectedReminderChannelId(): String {
         return when {
-            sound && vibration -> REMINDER_CHANNEL_SOUND_VIBRATION
-            sound -> REMINDER_CHANNEL_SOUND_ONLY
-            vibration -> REMINDER_CHANNEL_VIBRATION_ONLY
+            reminderPreferences.soundEnabled &&
+                    reminderPreferences.vibrationEnabled ->
+                REMINDER_CHANNEL_SOUND_VIBRATION
+
+            reminderPreferences.soundEnabled ->
+                REMINDER_CHANNEL_SOUND_ONLY
+
+            reminderPreferences.vibrationEnabled ->
+                REMINDER_CHANNEL_VIBRATION_ONLY
+
             else -> REMINDER_CHANNEL_SILENT
         }
     }
@@ -240,15 +354,13 @@ class ReminderService : Service() {
     }
 
     private fun showReminderNotification() {
-        val channelId = reminderChannelId(
-            sound = reminderPreferences.soundEnabled,
-            vibration = reminderPreferences.vibrationEnabled
+        val notification = NotificationCompat.Builder(
+            this,
+            selectedReminderChannelId()
         )
-
-        val notification = NotificationCompat.Builder(this, channelId)
             .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
             .setContentTitle("Time for a break")
-            .setContentText("Dismiss this reminder when you're ready to continue.")
+            .setContentText("Dismiss this reminder within one minute.")
             .setContentIntent(openMainScreenPendingIntent(REQUEST_OPEN_REMINDER))
             .setAutoCancel(false)
             .setOnlyAlertOnce(true)
@@ -297,21 +409,32 @@ class ReminderService : Service() {
         reminderPreferences.intervalMinutes = intervalMinutes
         reminderPreferences.nextReminderAtMillis = nextReminderAt
         reminderPreferences.isReminderPending = reminderPending
+        reminderPreferences.reminderAutoDismissAtMillis = reminderAutoDismissAt
+        reminderPreferences.consecutiveMissedReminders = consecutiveMisses
         reminderPreferences.isRunning = true
     }
 
     private fun stopReminderService() {
         handler.removeCallbacks(updateRunnable)
+        handler.removeCallbacks(autoDismissRunnable)
+        stopReminderVibration()
+
         reminderPreferences.nextReminderAtMillis = 0L
         reminderPreferences.isReminderPending = false
+        reminderPreferences.reminderAutoDismissAtMillis = 0L
+        reminderPreferences.consecutiveMissedReminders = 0
         reminderPreferences.isRunning = false
+
         notificationManager.cancel(ONGOING_NOTIFICATION_ID)
         notificationManager.cancel(REMINDER_NOTIFICATION_ID)
+        stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
     }
 
     override fun onDestroy() {
         handler.removeCallbacks(updateRunnable)
+        handler.removeCallbacks(autoDismissRunnable)
+        stopReminderVibration()
         super.onDestroy()
     }
 
@@ -327,16 +450,21 @@ class ReminderService : Service() {
         private const val DEFAULT_INTERVAL_MINUTES = 20
         private const val MILLIS_PER_MINUTE = 60_000L
         private const val UPDATE_INTERVAL_MILLIS = 1_000L
+        private const val REMINDER_TIMEOUT_MILLIS = 60_000L
+        private const val MAX_CONSECUTIVE_MISSES = 2
+        private const val VIBRATION_CYCLE_COUNT = 60
+        private const val VIBRATION_ON_MILLIS = 700L
+        private const val VIBRATION_OFF_MILLIS = 300L
 
         private const val STATUS_CHANNEL_ID = "reminder_timer"
         private const val REMINDER_CHANNEL_SOUND_VIBRATION =
-            "break_reminders_sound_vibration"
+            "break_reminders_sound_vibration_v2"
         private const val REMINDER_CHANNEL_SOUND_ONLY =
-            "break_reminders_sound_only"
+            "break_reminders_sound_only_v2"
         private const val REMINDER_CHANNEL_VIBRATION_ONLY =
-            "break_reminders_vibration_only"
+            "break_reminders_vibration_only_v2"
         private const val REMINDER_CHANNEL_SILENT =
-            "break_reminders_silent"
+            "break_reminders_silent_v2"
 
         private const val ONGOING_NOTIFICATION_ID = 1001
         private const val REMINDER_NOTIFICATION_ID = 1002
