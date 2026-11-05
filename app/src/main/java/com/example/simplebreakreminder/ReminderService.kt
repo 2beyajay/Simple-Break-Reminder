@@ -9,6 +9,7 @@ import android.content.Context
 import android.content.Intent
 import android.media.AudioAttributes
 import android.media.RingtoneManager
+import android.net.Uri
 import android.os.Build
 import android.os.Handler
 import android.os.IBinder
@@ -34,8 +35,7 @@ class ReminderService : Service() {
 
             val now = System.currentTimeMillis()
 
-            // When the timer expires, leave it pending until the user dismisses
-            // the reminder. Do not start another interval yet.
+            // Keep the reminder pending until the user dismisses it.
             if (!reminderPending && now >= nextReminderAt) {
                 reminderPending = true
                 saveTimerState()
@@ -116,8 +116,6 @@ class ReminderService : Service() {
 
         reminderPending = false
         notificationManager.cancel(REMINDER_NOTIFICATION_ID)
-
-        // Start a fresh interval only now, after the reminder is dismissed.
         nextReminderAt =
             System.currentTimeMillis() + intervalMinutes * MILLIS_PER_MINUTE
 
@@ -137,31 +135,77 @@ class ReminderService : Service() {
             setSound(null, null)
             enableVibration(false)
         }
+        notificationManager.createNotificationChannel(statusChannel)
+
+        createReminderChannel(
+            channelId = reminderChannelId(sound = true, vibration = true),
+            channelName = "Break reminders: sound and vibration",
+            soundEnabled = true,
+            vibrationEnabled = true
+        )
+        createReminderChannel(
+            channelId = reminderChannelId(sound = true, vibration = false),
+            channelName = "Break reminders: sound only",
+            soundEnabled = true,
+            vibrationEnabled = false
+        )
+        createReminderChannel(
+            channelId = reminderChannelId(sound = false, vibration = true),
+            channelName = "Break reminders: vibration only",
+            soundEnabled = false,
+            vibrationEnabled = true
+        )
+        createReminderChannel(
+            channelId = reminderChannelId(sound = false, vibration = false),
+            channelName = "Break reminders: silent",
+            soundEnabled = false,
+            vibrationEnabled = false
+        )
+    }
+
+    private fun createReminderChannel(
+        channelId: String,
+        channelName: String,
+        soundEnabled: Boolean,
+        vibrationEnabled: Boolean
+    ) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
 
         val alarmAttributes = AudioAttributes.Builder()
             .setUsage(AudioAttributes.USAGE_ALARM)
             .build()
 
-        val reminderChannel = NotificationChannel(
-            REMINDER_CHANNEL_ID,
-            "Break reminders",
+        val channel = NotificationChannel(
+            channelId,
+            channelName,
             NotificationManager.IMPORTANCE_HIGH
         ).apply {
             description = "Alerts when it is time to take a break"
-            setSound(
-                RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM),
-                alarmAttributes
-            )
-            enableVibration(true)
+            enableVibration(vibrationEnabled)
+
+            if (soundEnabled) {
+                setSound(
+                    RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM),
+                    alarmAttributes
+                )
+            } else {
+                setSound(null, null)
+            }
         }
 
-        notificationManager.createNotificationChannel(statusChannel)
-        notificationManager.createNotificationChannel(reminderChannel)
+        notificationManager.createNotificationChannel(channel)
+    }
+
+    private fun reminderChannelId(sound: Boolean, vibration: Boolean): String {
+        return when {
+            sound && vibration -> REMINDER_CHANNEL_SOUND_VIBRATION
+            sound -> REMINDER_CHANNEL_SOUND_ONLY
+            vibration -> REMINDER_CHANNEL_VIBRATION_ONLY
+            else -> REMINDER_CHANNEL_SILENT
+        }
     }
 
     private fun buildOngoingNotification(): Notification {
-        val contentIntent = openMainScreenPendingIntent(REQUEST_OPEN_MAIN)
-
         val statusText = if (reminderPending) {
             "Reminder waiting to be dismissed"
         } else {
@@ -172,7 +216,7 @@ class ReminderService : Service() {
             .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
             .setContentTitle("Break reminders are on")
             .setContentText(statusText)
-            .setContentIntent(contentIntent)
+            .setContentIntent(openMainScreenPendingIntent(REQUEST_OPEN_MAIN))
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .addAction(
@@ -196,7 +240,12 @@ class ReminderService : Service() {
     }
 
     private fun showReminderNotification() {
-        val notification = NotificationCompat.Builder(this, REMINDER_CHANNEL_ID)
+        val channelId = reminderChannelId(
+            sound = reminderPreferences.soundEnabled,
+            vibration = reminderPreferences.vibrationEnabled
+        )
+
+        val notification = NotificationCompat.Builder(this, channelId)
             .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
             .setContentTitle("Time for a break")
             .setContentText("Dismiss this reminder when you're ready to continue.")
@@ -280,7 +329,15 @@ class ReminderService : Service() {
         private const val UPDATE_INTERVAL_MILLIS = 1_000L
 
         private const val STATUS_CHANNEL_ID = "reminder_timer"
-        private const val REMINDER_CHANNEL_ID = "break_reminders"
+        private const val REMINDER_CHANNEL_SOUND_VIBRATION =
+            "break_reminders_sound_vibration"
+        private const val REMINDER_CHANNEL_SOUND_ONLY =
+            "break_reminders_sound_only"
+        private const val REMINDER_CHANNEL_VIBRATION_ONLY =
+            "break_reminders_vibration_only"
+        private const val REMINDER_CHANNEL_SILENT =
+            "break_reminders_silent"
+
         private const val ONGOING_NOTIFICATION_ID = 1001
         private const val REMINDER_NOTIFICATION_ID = 1002
         private const val REQUEST_SKIP = 2001

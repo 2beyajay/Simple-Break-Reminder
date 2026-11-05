@@ -34,12 +34,26 @@ class ReminderPreferences(context: Context) {
             preferences.edit().putBoolean(KEY_REMINDER_PENDING, value).apply()
         }
 
+    var soundEnabled: Boolean
+        get() = preferences.getBoolean(KEY_SOUND_ENABLED, true)
+        set(value) {
+            preferences.edit().putBoolean(KEY_SOUND_ENABLED, value).apply()
+        }
+
+    var vibrationEnabled: Boolean
+        get() = preferences.getBoolean(KEY_VIBRATION_ENABLED, true)
+        set(value) {
+            preferences.edit().putBoolean(KEY_VIBRATION_ENABLED, value).apply()
+        }
+
     private companion object {
         const val PREFERENCES_FILE = "break_reminder_preferences"
         const val KEY_INTERVAL_MINUTES = "interval_minutes"
         const val KEY_RUNNING = "reminders_running"
         const val KEY_NEXT_REMINDER_AT = "next_reminder_at"
         const val KEY_REMINDER_PENDING = "reminder_pending"
+        const val KEY_SOUND_ENABLED = "sound_enabled"
+        const val KEY_VIBRATION_ENABLED = "vibration_enabled"
         const val DEFAULT_INTERVAL_MINUTES = 20
     }
 }
